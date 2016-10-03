@@ -1,13 +1,26 @@
 package main
 
-import "time"
+import (
+	"sort"
+)
+
+
+type expireAtList []int64
+
+func (l expireAtList) Len() int {
+	return len(l)
+}
+
+func (l expireAtList) Less(i, j int) bool {
+	return l[i] < l[j]
+}
+
+func (l expireAtList) Swap(i, j int) {
+	l[i], l[j] = l[j], l[i]
+}
 
 func main() {
-	for i:=0;i<8;i++ {
-		b := i
-		go func() {
-			println(b)
-		}()
-	}
-	time.Sleep(1e9)
+	l := expireAtList{5,2,5,6,8,8,543}
+	sort.Sort(l)
+	print(l)
 }
