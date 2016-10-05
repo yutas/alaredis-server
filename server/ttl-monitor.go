@@ -3,13 +3,12 @@ package main
 import (
 	"time"
 	"sort"
-	"log"
 )
 
-type keyExpirationMonitor struct {
+type ttlMonitor struct {
 	expireAtList    sortedTimeList
-	expireAtKeysMap map[int][]*keyMeta
-	keyExpireAtMap  map[*keyMeta]int
+	expireAtKeysMap map[int64][]*keyMeta
+	keyExpireAtMap  map[*keyMeta]int64
 	applicationChan chan *application
 	updateChan      chan struct{}
 	onKeyExpire	func(m *keyMeta)
@@ -18,23 +17,23 @@ type keyExpirationMonitor struct {
 
 type application struct {
 	m *keyMeta
-	expireAt int
+	expireAt int64
 }
 
 
-func newTTLMonitor(bufSize int, onKeyExpire func(m *keyMeta)) *keyExpirationMonitor {
-	mon := new(keyExpirationMonitor)
-	mon.expireAtList = sortedTimeList{make([]int, 0, 256)}
-	mon.expireAtKeysMap = make(map[int][]*keyMeta)
-	mon.keyExpireAtMap = make(map[*keyMeta]int)
-	mon.applicationChan = make(chan *application, bufSize)
+func newTTLMonitor(inputQueueSize int, onKeyExpire func(m *keyMeta)) *ttlMonitor {
+	mon := new(ttlMonitor)
+	mon.expireAtList = make(sortedTimeList, 0, 256)
+	mon.expireAtKeysMap = make(map[int64][]*keyMeta)
+	mon.keyExpireAtMap = make(map[*keyMeta]int64)
+	mon.applicationChan = make(chan *application, inputQueueSize)
 	mon.updateChan = make(chan struct{}, 1)
 	mon.onKeyExpire = onKeyExpire
 	return mon
 }
 
 
-func (mon *keyExpirationMonitor) run() {
+func (mon *ttlMonitor) run() {
 
 	// applications watcher
 	go func() {
@@ -49,6 +48,7 @@ func (mon *keyExpirationMonitor) run() {
 				} else if curExpireAt > 0 && appl.expireAt == 0 {
 					// delete old expire at, as new one is zero
 					mon.remove(appl.m, curExpireAt)
+					mon.onKeyExpire(appl.m)
 					mon.updateChan <- struct{}{}
 				}
 			}
@@ -67,7 +67,7 @@ func (mon *keyExpirationMonitor) run() {
 			} else {
 				var nearestExpireAt = mon.expireAtList.getFirst()
 				select {
-				case <-time.After(time.Duration(nearestExpireAt-int(time.Now().Unix()))*1e9):
+				case <-time.After(time.Duration(nearestExpireAt-time.Now().Unix())*1e9):
 					//log.Print("Removing keys")
 					mon.removeAll(nearestExpireAt)
 				case <-mon.updateChan:
@@ -80,21 +80,21 @@ func (mon *keyExpirationMonitor) run() {
 }
 
 
-func (mon *keyExpirationMonitor) monitor(m *keyMeta, ttl int) {
-	var expireAt int
+func (mon *ttlMonitor) monitor(m *keyMeta, ttl int64) {
+	var expireAt int64
 	if ttl > 0 {
-		expireAt = int(time.Now().Unix()) + ttl
+		expireAt = time.Now().Unix() + ttl
 	} else {
 		expireAt = 0
 	}
 	mon.applicationChan <- &application{m, expireAt}
 }
 
-func (mon *keyExpirationMonitor) unmonitor(m *keyMeta) {
+func (mon *ttlMonitor) unmonitor(m *keyMeta) {
 	mon.applicationChan <- &application{m, 0}
 }
 
-func (mon *keyExpirationMonitor) remove(meta *keyMeta, expireAt int) {
+func (mon *ttlMonitor) remove(meta *keyMeta, expireAt int64) {
 	if expireAt == 0 { return }
 	delete(mon.keyExpireAtMap, meta)
 	keys, ok := mon.expireAtKeysMap[expireAt]
@@ -108,12 +108,14 @@ func (mon *keyExpirationMonitor) remove(meta *keyMeta, expireAt int) {
 			keys[i] = keys[len(keys)-1]
 			keys = keys[:len(keys)-1]
 		}
+		if len(keys) == 0 {
+			delete(mon.expireAtKeysMap, expireAt)
+		}
 	}
 	mon.expireAtList.remove(expireAt)
-	mon.onKeyExpire(meta)
 }
 
-func (mon *keyExpirationMonitor) removeAll(expireAt int) {
+func (mon *ttlMonitor) removeAll(expireAt int64) {
 	keys, ok := mon.expireAtKeysMap[expireAt]
 	if ok {
 		for _, m := range keys {
@@ -125,7 +127,7 @@ func (mon *keyExpirationMonitor) removeAll(expireAt int) {
 	mon.expireAtList.remove(expireAt)
 }
 
-func (mon *keyExpirationMonitor) add(meta *keyMeta, expireAt int) {
+func (mon *ttlMonitor) add(meta *keyMeta, expireAt int64) {
 	mon.keyExpireAtMap[meta] = expireAt
 	keys, ok := mon.expireAtKeysMap[expireAt]
 	if !ok {
@@ -137,30 +139,43 @@ func (mon *keyExpirationMonitor) add(meta *keyMeta, expireAt int) {
 
 
 
-type sortedTimeList struct {
-	slice []int
+type sortedTimeList []int64
+
+func (l *sortedTimeList) add(t int64) {
+	*l = append(*l, t)
+	sort.Sort(l)
 }
 
-func (l *sortedTimeList) add(t int) {
-	l.slice = append(l.slice, t)
-	sort.Ints(l.slice)
-}
-
-func (l *sortedTimeList) remove(t int) {
+func (l *sortedTimeList) remove(t int64) {
 	i := -1
-	var t1 int
-	for i, t1 = range l.slice {
+	var t1 int64
+	for i, t1 = range *l {
 		if t1 == t { break }
 	}
 	if i > -1 {
-		l.slice = append(l.slice[:i], l.slice[i+1:]...)
+		*l = append((*l)[:i], (*l)[i+1:]...)
 	}
 }
 
 func (l *sortedTimeList) len() int {
-	return len(l.slice)
+	return len(*l)
 }
 
-func (l *sortedTimeList) getFirst() int {
-	return l.slice[0]
+func (l *sortedTimeList) getFirst() int64 {
+	return (*l)[0]
 }
+
+// Len is the number of elements in the collection.
+func (l sortedTimeList) Len() int {
+	return len(l)
+}
+// Less reports whether the element with
+// index i should sort before the element with index j.
+func (l sortedTimeList) Less(i, j int) bool {
+	return l[i] < l[j]
+}
+// Swap swaps the elements with indexes i and j.
+func (l sortedTimeList) Swap(i, j int) {
+	l[i], l[j] = l[j], l[i]
+}
+

@@ -3,7 +3,6 @@ package main
 import (
 	"hash/crc32"
 	"sync"
-	"errors"
 	"log"
 	"strconv"
 )
@@ -23,7 +22,6 @@ const (
 	OP_LSETI
 	OP_LGET
 	OP_LGETI
-	OP_LINSERT
 	OP_DSET
 	OP_DSETI
 	OP_DGET
@@ -38,9 +36,8 @@ type Storage struct {
 	meta             map[string]*keyMeta
 	metaLock         sync.RWMutex
 	requestChan      chan *innerRequest
-	bucketChans      []chan *innerRequest
 	stopChan         chan struct{}
-	keyExpirationMon *keyExpirationMonitor
+	keyExpirationMon *ttlMonitor
 }
 
 type innerRequest struct {
@@ -49,7 +46,7 @@ type innerRequest struct {
 	m       *keyMeta
 	b       uint8
 	idx     string
-	ttl     int
+	ttl     int64
 	val     interface{}
 	outCh   chan interface{}
 	errChan chan error
@@ -59,10 +56,8 @@ func NewStorage(bucketsNum int) *Storage {
 	s := new(Storage)
 	s.bucketsNum = bucketsNum
 	s.buckets = make([]*StorageBucket, s.bucketsNum, s.bucketsNum)
-	s.bucketChans = make([]chan *innerRequest, s.bucketsNum, s.bucketsNum)
 	for i:=0; i<s.bucketsNum;i++ {
 		s.buckets[i] = newStorageBucket()
-		s.bucketChans[i] = make(chan *innerRequest, 100)
 	}
 	s.meta = make(map[string]*keyMeta)
 	s.requestChan = make(chan *innerRequest)
@@ -72,7 +67,7 @@ func NewStorage(bucketsNum int) *Storage {
 	return s
 }
 
-func (s *Storage) newInnerRequest(op int, key string, idx string, val interface{}, ttl int) *innerRequest {
+func (s *Storage) newInnerRequest(op int, key string, idx string, val interface{}, ttl int64) *innerRequest {
 	req := new(innerRequest)
 	req.op = op
 	req.key = key
@@ -113,7 +108,7 @@ func (s *Storage) run() {
 		go func() {
 			for {
 				select {
-				case req := <-s.bucketChans[b]:
+				case req := <-s.buckets[b].requestChan:
 					val, err := opHandlers[req.op](req)
 					if err == nil {
 						req.outCh <- val
@@ -138,7 +133,7 @@ func (s *Storage) stop() {
 }
 
 func (s *Storage) processInnerRequest(req *innerRequest) {
-	s.bucketChans[req.b] <- req
+	s.buckets[req.b].requestChan <- req
 }
 
 func (s *Storage) getKeyMeta(k string) (*keyMeta, bool) {
@@ -163,7 +158,7 @@ func (s *Storage) delete(req *innerRequest) (interface{}, error) {
 
 	s.metaLock.Lock()
 	delete(s.meta, k)
-	(*s.buckets[req.b]).Delete(k)
+	s.buckets[req.b].Delete(k)
 	s.metaLock.Unlock()
 	return nil, nil
 }
@@ -173,7 +168,7 @@ func (s *Storage) set(req *innerRequest) (interface{}, error) {
 	ttl := req.ttl
 	v, ok := req.val.(string)
 	if !ok {
-		return nil, errors.New("Incoming object is not string")
+		return nil, &BadRequest{req, "Incoming object is not string"}
 	}
 	s.keyExpirationMon.monitor(req.m, ttl)
 	req.m.t = TYPE_STRING
@@ -185,11 +180,13 @@ func (s *Storage) get(req *innerRequest) (interface{}, error) {
 	k := req.key
 	m := req.m
 
-	if m.t != TYPE_STRING {
-		return nil, errors.New("Stored object is not string")
+	if m.t == TYPE_NULL {
+		return nil, &ObjectNotFound{req}
+	} else if m.t != TYPE_STRING {
+		return nil, &BadRequest{req, "Stored object is not string"}
 	}
 	v,_ := s.buckets[req.b].Get(k)
-	return v, nil
+	return *v, nil
 }
 
 func (s *Storage) lset(req *innerRequest) (interface{}, error) {
@@ -197,34 +194,36 @@ func (s *Storage) lset(req *innerRequest) (interface{}, error) {
 	ttl := req.ttl
 	v, ok := req.val.([]string)
 	if !ok {
-		return nil, errors.New("Incoming object is not list")
+		return nil, &BadRequest{req, "Incoming object is not list"}
 	}
 
 	s.keyExpirationMon.monitor(req.m, ttl)
 	req.m.t = TYPE_LIST
 	s.setKeyMeta(k, req.m)
-	(*s.buckets[req.b]).Set(k, v)
+	s.buckets[req.b].Set(k, v)
 	return nil, nil
 }
 func (s *Storage) lseti(req *innerRequest) (interface{}, error) {
-	if req.m.t != TYPE_LIST {
-		return nil, errors.New("Stored object is not list")
+	if req.m.t == TYPE_NULL {
+		return nil, &ObjectNotFound{req}
+	} else if req.m.t != TYPE_LIST {
+		return nil, &BadRequest{req, "Stored object is not list"}
 	}
 	k := req.key
 	idx, err := strconv.Atoi(req.idx)
 	if err != nil {
-		return nil, errors.New("Non integer index: "+err.Error())
+		return nil, &BadRequest{req, "Non integer index: "+err.Error()}
 	}
 	v, ok := req.val.(string)
 	if !ok {
-		return nil, errors.New("Incoming object is not string")
+		return nil, &BadRequest{req, "Incoming object is not string"}
 	}
 	_ = v
 	_ = idx
-	listPtr, _ := (*s.buckets[req.b]).Get(k)
+	listPtr, _ := s.buckets[req.b].Get(k)
 	list, _ := (*listPtr).([]string)
 	if idx >= len(list) {
-		return nil, errors.New("List index out of range")
+		return nil, &BadRequest{req, "List index out of range"}
 	}
 	list[idx] = v
 	return nil, nil
@@ -233,60 +232,63 @@ func (s *Storage) lget(req *innerRequest) (interface{}, error) {
 	k := req.key
 	m := req.m
 
-	if m.t != TYPE_LIST {
-		return nil, errors.New("Stored object is not list")
+	if m.t == TYPE_NULL {
+		return nil, &ObjectNotFound{req}
+	} else if m.t != TYPE_LIST {
+		return nil, &BadRequest{req, "Stored object is not list"}
 	}
-	v, _ := (*s.buckets[req.b]).Get(k)
-	return v, nil
+	v, _ := s.buckets[req.b].Get(k)
+	return *v, nil
 }
 func (s *Storage) lgeti(req *innerRequest) (interface{}, error) {
 	k := req.key
 	m := req.m
 
-	if m.t != TYPE_LIST {
-		return nil, errors.New("Stored object is not list")
+	if m.t == TYPE_NULL {
+		return nil, &ObjectNotFound{req}
+	} else if m.t != TYPE_LIST {
+		return nil, &BadRequest{req, "Stored object is not list"}
 	}
 
 	idx, err := strconv.Atoi(req.idx)
 	if err != nil {
-		return nil, errors.New("Non integer index: "+err.Error())
+		return nil, &BadRequest{req, "Non integer index: "+err.Error()}
 	}
 
-	listPtr, _ := (*s.buckets[req.b]).Get(k)
+	listPtr, _ := s.buckets[req.b].Get(k)
 	list, _ := (*listPtr).([]string)
 	if idx >= len(list) {
-		return nil, errors.New("List index out of range")
+		return nil, &BadRequest{req, "List index out of range"}
 	}
 	return list[idx], nil
 }
-func (s *Storage) linsert(req *innerRequest) (interface{}, error) { return nil, nil }
 
 func (s *Storage) dset(req *innerRequest) (interface{}, error) {
 	k := req.key
 	ttl := req.ttl
 	v, ok := req.val.(map[string]string)
 	if !ok {
-		return nil, errors.New("Incoming object is not dict")
+		return nil, &BadRequest{req, "Incoming object is not dict"}
 	}
 
 	s.keyExpirationMon.monitor(req.m, ttl)
 	req.m.t = TYPE_DICT
 	s.setKeyMeta(k, req.m)
-	(*s.buckets[req.b]).Set(k, v)
+	s.buckets[req.b].Set(k, v)
 	return nil, nil
 }
 func (s *Storage) dseti(req *innerRequest) (interface{}, error) {
 	k := req.key
 	v, ok := req.val.(string)
 	if !ok {
-		return nil, errors.New("Incoming object is not string")
+		return nil, &BadRequest{req, "Incoming object is not string"}
 	}
 	idx := req.idx
-	dictPtr, ok := (*s.buckets[req.b]).Get(k)
+	dictPtr, ok := s.buckets[req.b].Get(k)
 	if !ok {
 		req.m.t = TYPE_DICT
 		s.setKeyMeta(k, req.m)
-		(*s.buckets[req.b]).Set(k, map[string]string{idx:v})
+		s.buckets[req.b].Set(k, map[string]string{idx:v})
 	} else {
 		dict := (*dictPtr).(map[string]string)
 		dict[idx] = v
@@ -297,26 +299,30 @@ func (s *Storage) dget(req *innerRequest) (interface{}, error) {
 	k := req.key
 	m := req.m
 
-	if m.t != TYPE_DICT {
-		return nil, errors.New("Stored object is not dict")
+	if m.t == TYPE_NULL {
+		return nil, &ObjectNotFound{req}
+	} else if m.t != TYPE_DICT {
+		return nil, &BadRequest{req, "Stored object is not dict"}
 	}
-	v, _ := (*s.buckets[req.b]).Get(k)
-	return v, nil
+	v, _ := s.buckets[req.b].Get(k)
+	return *v, nil
 }
 func (s *Storage) dgeti(req *innerRequest) (interface{}, error) {
 	k := req.key
 	m := req.m
 
-	if m.t != TYPE_DICT {
-		return nil, errors.New("Stored object is not dict")
+	if m.t == TYPE_NULL {
+		return nil, &ObjectNotFound{req}
+	} else if m.t != TYPE_DICT {
+		return nil, &BadRequest{req, "Stored object is not dict"}
 	}
 
 	idx := req.idx
-	dictPtr, _ := (*s.buckets[req.b]).Get(k)
+	dictPtr, _ := s.buckets[req.b].Get(k)
 	dict := (*dictPtr).(map[string]string)
 	val, ok := dict[idx]
 	if !ok {
-		return nil, errors.New("Dict does not contain index '"+idx+"'")
+		return nil, &BadRequest{req, "Dict does not contain index '"+idx+"'"}
 	}
 	return val, nil
 }
@@ -324,10 +330,12 @@ func (s *Storage) dkeys(req *innerRequest) (interface{}, error) {
 	k := req.key
 	m := req.m
 
-	if m.t != TYPE_DICT {
-		return nil, errors.New("Stored object is not dict")
+	if m.t == TYPE_NULL {
+		return nil, &ObjectNotFound{req}
+	} else if m.t != TYPE_DICT {
+		return nil, &BadRequest{req, "Stored object is not dict"}
 	}
-	dictPtr, _ := (*s.buckets[req.b]).Get(k)
+	dictPtr, _ := s.buckets[req.b].Get(k)
 	dict := (*dictPtr).(map[string]string)
 	keys := make([]string, len(dict))
 	i := 0
@@ -357,4 +365,22 @@ func newKeyMeta(k string) *keyMeta {
 	m.hash = crc32.ChecksumIEEE([]byte(k))
 	m.t = TYPE_NULL
 	return m
+}
+
+
+type BadRequest struct {
+	req *innerRequest
+	msg string
+}
+
+func (br *BadRequest) Error() string {
+	return "BadRequest: "+br.msg
+}
+
+type ObjectNotFound struct {
+	req *innerRequest
+}
+
+func (nf *ObjectNotFound) Error() string {
+	return "Object not found for key '"+nf.req.key+"'"
 }

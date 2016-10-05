@@ -5,15 +5,15 @@ import (
 	"errors"
 )
 
-type BodyParserText struct {
+type BodyParserBinary struct {
 
 }
 
-func (p BodyParserText) ComposeBody(w io.Writer, val interface{}) error {
+func (p BodyParserBinary) ComposeBody(w io.Writer, val interface{}) error {
 	return nil
 }
 
-func (h BodyParserText) ParseBody(body io.Reader, data *[]string) (error) {
+func (h BodyParserBinary) ParseBody(body io.Reader, data *[]string) (error) {
 	var size int
 	sbuf := make([]byte, 4)
 	var vbuf []byte
@@ -32,19 +32,19 @@ func (h BodyParserText) ParseBody(body io.Reader, data *[]string) (error) {
 	return nil
 }
 
-func (p BodyParserText) GetStringValue(body io.Reader) (string, error) {
+func (p BodyParserBinary) GetStringValue(body io.Reader) (string, error) {
 	var data []string
 	err := p.ParseBody(body, &data)
 	return data[0], err
 }
 
-func (p BodyParserText) GetListValue(body io.Reader) ([]string, error) {
+func (p BodyParserBinary) GetListValue(body io.Reader) ([]string, error) {
 	var data []string
 	err := p.ParseBody(body, &data)
 	return data, err
 }
 
-func (p BodyParserText) GetDictValue(body io.Reader) (map[string]string, error) {
+func (p BodyParserBinary) GetDictValue(body io.Reader) (map[string]string, error) {
 	var data []string
 	err := p.ParseBody(body, &data)
 	if err != nil { return nil, err }
