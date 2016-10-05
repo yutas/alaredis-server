@@ -1,4 +1,4 @@
-package lib
+package alaredis_lib
 
 import (
 	"io"

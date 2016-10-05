@@ -4,7 +4,6 @@ import (
 	"net/http"
 	"log"
 	"fmt"
-	"alaredis/alaredis-lib"
 	"flag"
 	"os"
 	"github.com/icub3d/graceful"
@@ -14,6 +13,7 @@ import (
 	 _ "net/http/pprof"
 	_ "github.com/mkevac/debugcharts"
 	"runtime"
+	"alaredis/alaredis_lib"
 )
 
 func main() {
@@ -54,13 +54,10 @@ func main() {
 	}
 
 	storage := NewStorage(bucketsNum)
-	httpHandler := NewHttpHandler(storage, alaredis.BodyParserJson{})
+	httpHandler := NewHttpHandler(storage, alaredis_lib.BodyParserJson{})
 	http.HandleFunc("/", (*httpHandler).HandleRequest)
 
 	storage.run()
-	defer storage.stop()
-
-
 
 
 	signals := make(chan os.Signal, 1)
@@ -71,6 +68,7 @@ func main() {
 		graceful.Close()
 	}()
 
+	log.Printf("Listening port %d", listenPort)
 	err := graceful.ListenAndServe(fmt.Sprintf(":%d", listenPort), nil)
 	log.Printf("Got http serve error '%v'", err)
 }

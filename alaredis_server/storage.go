@@ -36,7 +36,6 @@ type Storage struct {
 	meta             map[string]*keyMeta
 	metaLock         sync.RWMutex
 	requestChan      chan *innerRequest
-	stopChan         chan struct{}
 	keyExpirationMon *ttlMonitor
 }
 
@@ -62,7 +61,6 @@ func NewStorage(bucketsNum int) *Storage {
 	s.meta = make(map[string]*keyMeta)
 	s.requestChan = make(chan *innerRequest)
 	s.metaLock = sync.RWMutex{}
-	s.stopChan = make(chan struct{}, 1)
 	s.keyExpirationMon = newTTLMonitor(s.bucketsNum*2, s.onKeyExpire)
 	return s
 }
@@ -116,20 +114,12 @@ func (s *Storage) run() {
 					} else {
 						req.errChan <- err
 					}
-				case <-s.stopChan:
-					log.Printf("Stopped worker for bucket #%d", b)
-					return
 				}
 			}
 		} ()
 	}
 
 	s.keyExpirationMon.run()
-}
-
-func (s *Storage) stop() {
-	s.stopChan <- struct {}{}
-	close(s.stopChan)
 }
 
 func (s *Storage) processInnerRequest(req *innerRequest) {
