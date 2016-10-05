@@ -89,15 +89,15 @@ func main() {
 	var threads int
 	var port int
 	var host string
-	flag.BoolVar(&genCases, "gen", false, `New queries list will be generated`)
-	flag.BoolVar(&runCases, "run", false, `Run cases from file`)
-	flag.StringVar(&casesFile, "file", ``, `Path to file with queries list`)
+	flag.BoolVar(&genCases, "gen", false, `New queries will be generated and written to <file>`)
+	flag.BoolVar(&runCases, "run", false, `Run queries from <file>`)
+	flag.StringVar(&casesFile, "file", ``, `Path to file with queries`)
 	flag.IntVar(&num, "num", 1000, `Amount of queries to run`)
 	flag.StringVar(&logFile, "log", ``, `Path to log file`)
 	flag.IntVar(&concurrence, "conc", 1, `Number of concurrent http requests made`)
 	flag.IntVar(&threads, "thr", 0, `sets GOMAXPROCS value`)
-	flag.StringVar(&host, "h", `localhost`, `cache host`)
-	flag.IntVar(&port, "p", 8080, `cache port`)
+	flag.StringVar(&host, "h", `localhost`, `Cache host`)
+	flag.IntVar(&port, "p", 8080, `Cache port`)
 	flag.Parse()
 
 	if threads > 0 {
