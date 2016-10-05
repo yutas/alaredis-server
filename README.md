@@ -25,6 +25,10 @@ curl http://localhost:8080/get/foo # will return "bar" to command line
 ```
 
 ### Client
+Installation:
+```bash
+go get github.com/yutas/alaredis-server/alaredis_lib
+```
 ```go
 package main
 
