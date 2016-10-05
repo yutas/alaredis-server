@@ -17,11 +17,11 @@ type CacheClient struct {
 	bodyParser BodyParser
 }
 
-func NewClient(host string, port int, bodyParser BodyParser) *CacheClient {
+func NewClient(host string, port int) *CacheClient {
 	c := new(CacheClient)
 	c.baseUrl = fmt.Sprintf("http://%s:%d", host, port)
 	c.client = &http.Client{}
-	c.bodyParser = bodyParser
+	c.bodyParser = BodyParserJson{}
 	return c
 }
 
