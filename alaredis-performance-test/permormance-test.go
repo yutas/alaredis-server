@@ -7,7 +7,7 @@ import (
 	"strings"
 	"fmt"
 	"bufio"
-	"alaredis/lib"
+	"alaredis/alaredis-lib"
 	"log"
 	"flag"
 	"net/http"
@@ -77,7 +77,7 @@ type Record struct {
 type caseProducer func(k string, recordExists bool, record *Record) (*TestCase, bool)
 
 
-var bodyParser = lib.BodyParserJson{}
+var bodyParser = alaredis.BodyParserJson{}
 
 func main() {
 	var genCases bool
@@ -115,7 +115,7 @@ func main() {
 
 	rand.Seed(time.Now().UnixNano())
 
-	client := lib.NewClient(host, port, bodyParser)
+	client := alaredis.NewClient(host, port, bodyParser)
 
 	if genCases {
 		letters := "abcd"
@@ -133,7 +133,7 @@ func bodyToString(body interface{}) string {
 }
 
 
-func generateCases(client *lib.CacheClient,limit int, letters *string, keyLen int, errRate float32, filePath string) {
+func generateCases(client *alaredis.CacheClient,limit int, letters *string, keyLen int, errRate float32, filePath string) {
 	f,_ := os.Create(filePath)
 	defer f.Close()
 	records := make(map[string]Record, 100)
@@ -231,7 +231,7 @@ type queryDuration struct {
 }
 
 
-func testCases(c *lib.CacheClient, filePath string,limit int, concurrence int) {
+func testCases(c *alaredis.CacheClient, filePath string,limit int, concurrence int) {
 	f,_ := os.Open(filePath)
 	defer f.Close()
 	scanner := bufio.NewScanner(f)

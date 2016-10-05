@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"log"
 	"fmt"
-	"alaredis/lib"
+	"alaredis/alaredis-lib"
 	"flag"
 	"os"
 	"github.com/icub3d/graceful"
@@ -54,7 +54,7 @@ func main() {
 	}
 
 	storage := NewStorage(bucketsNum)
-	httpHandler := NewHttpHandler(storage, lib.BodyParserJson{})
+	httpHandler := NewHttpHandler(storage, alaredis.BodyParserJson{})
 	http.HandleFunc("/", (*httpHandler).HandleRequest)
 
 	storage.run()

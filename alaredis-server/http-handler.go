@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"strings"
 	"io"
-	"alaredis/lib"
+	"alaredis/alaredis-lib"
 	"errors"
 	"strconv"
 	"log"
@@ -13,8 +13,8 @@ import (
 
 
 type HttpHandler struct {
-	storage *Storage
-	bodyParser lib.BodyParser
+	storage       *Storage
+	bodyParser    alaredis.BodyParser
 	opBodyParsers []func(r io.Reader, val *interface{}) error
 }
 
@@ -36,7 +36,7 @@ var OPERATIONS = map[string]int {
 
 
 
-func NewHttpHandler(storage *Storage, bodyParser lib.BodyParser) *HttpHandler {
+func NewHttpHandler(storage *Storage, bodyParser alaredis.BodyParser) *HttpHandler {
 	h := new(HttpHandler)
 	h.storage = storage
 	h.bodyParser = bodyParser
