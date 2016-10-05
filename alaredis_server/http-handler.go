@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"strings"
 	"io"
-	"alaredis/alaredis_lib"
+	"github.com/yutas/alaredis-server/alaredis_lib"
 	"errors"
 	"strconv"
 	"log"

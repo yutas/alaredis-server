@@ -13,7 +13,7 @@ import (
 	 _ "net/http/pprof"
 	_ "github.com/mkevac/debugcharts"
 	"runtime"
-	"alaredis/alaredis_lib"
+	"github.com/yutas/alaredis-server/alaredis_lib"
 )
 
 func main() {

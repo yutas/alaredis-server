@@ -7,7 +7,7 @@ import (
 	"strings"
 	"fmt"
 	"bufio"
-	"alaredis/alaredis_lib"
+	"github.com/yutas/alaredis-server/alaredis_lib"
 	"log"
 	"flag"
 	"net/http"
