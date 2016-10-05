@@ -110,7 +110,6 @@ func (s *Storage) run() {
 					val, err := opHandlers[req.op](req)
 					if err == nil {
 						req.outCh <- val
-
 					} else {
 						req.errChan <- err
 					}
@@ -126,6 +125,10 @@ func (s *Storage) processInnerRequest(req *innerRequest) {
 	s.buckets[req.b].requestChan <- req
 }
 
+func (s *Storage) onKeyExpire(m *keyMeta) {
+	s.processInnerRequest(s.newInnerRequest(OP_DELETE, m.key, ``, nil, 0))
+}
+
 func (s *Storage) getKeyMeta(k string) (*keyMeta, bool) {
 	s.metaLock.RLock()
 	m, ok := s.meta[k]
@@ -139,17 +142,13 @@ func (s *Storage) setKeyMeta(k string, m *keyMeta) {
 	s.metaLock.Unlock()
 }
 
-func (s *Storage) onKeyExpire(m *keyMeta) {
-	s.processInnerRequest(s.newInnerRequest(OP_DELETE, m.key, ``, nil, 0))
-}
-
 func (s *Storage) delete(req *innerRequest) (interface{}, error) {
 	k := req.key
 
 	s.metaLock.Lock()
 	delete(s.meta, k)
-	s.buckets[req.b].Delete(k)
 	s.metaLock.Unlock()
+	s.buckets[req.b].Delete(k)
 	return nil, nil
 }
 
@@ -208,8 +207,6 @@ func (s *Storage) lseti(req *innerRequest) (interface{}, error) {
 	if !ok {
 		return nil, &BadRequest{req, "Incoming object is not string"}
 	}
-	_ = v
-	_ = idx
 	listPtr, _ := s.buckets[req.b].Get(k)
 	list, _ := (*listPtr).([]string)
 	if idx >= len(list) {
