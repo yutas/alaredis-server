@@ -83,7 +83,7 @@ Where
 * **key** - string key on which operation will be performed
 * **index** - int index in list or string key in dicts, on which operation will be performed (only for lists and dicts values)
 * **ttl** - time in seconds, during wich key will be alive. Does not work for indexed values of lists and dicts
-* **body** - body in json format
+* **body** - object in json format
 
 ### Operations
 
