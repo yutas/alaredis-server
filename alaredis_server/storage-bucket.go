@@ -14,16 +14,16 @@ func newStorageBucket() *StorageBucket {
 	return b
 }
 
-func (b *StorageBucket) Delete(k string) {
+func (b *StorageBucket) delete(k string) {
 	delete(b.data, k)
 }
 
-func (b *StorageBucket) Set(k string, v interface{}) {
+func (b *StorageBucket) set(k string, v interface{}) {
 	b.data[k] = v
 
 }
 
-func (b *StorageBucket) Get(k string) (*interface{}, bool) {
+func (b *StorageBucket) get(k string) (*interface{}, bool) {
 	v, ok := b.data[k]
 	return &v, ok
 }

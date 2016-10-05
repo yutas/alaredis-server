@@ -148,7 +148,7 @@ func (s *Storage) delete(req *innerRequest) (interface{}, error) {
 	s.metaLock.Lock()
 	delete(s.meta, k)
 	s.metaLock.Unlock()
-	s.buckets[req.b].Delete(k)
+	s.buckets[req.b].delete(k)
 	return nil, nil
 }
 
@@ -162,9 +162,10 @@ func (s *Storage) set(req *innerRequest) (interface{}, error) {
 	s.keyExpirationMon.monitor(req.m, ttl)
 	req.m.t = TYPE_STRING
 	s.setKeyMeta(k, req.m)
-	s.buckets[req.b].Set(k, v)
+	s.buckets[req.b].set(k, v)
 	return nil, nil
 }
+
 func (s *Storage) get(req *innerRequest) (interface{}, error) {
 	k := req.key
 	m := req.m
@@ -174,7 +175,7 @@ func (s *Storage) get(req *innerRequest) (interface{}, error) {
 	} else if m.t != TYPE_STRING {
 		return nil, &BadRequest{req, "Stored object is not string"}
 	}
-	v,_ := s.buckets[req.b].Get(k)
+	v,_ := s.buckets[req.b].get(k)
 	return *v, nil
 }
 
@@ -189,9 +190,10 @@ func (s *Storage) lset(req *innerRequest) (interface{}, error) {
 	s.keyExpirationMon.monitor(req.m, ttl)
 	req.m.t = TYPE_LIST
 	s.setKeyMeta(k, req.m)
-	s.buckets[req.b].Set(k, v)
+	s.buckets[req.b].set(k, v)
 	return nil, nil
 }
+
 func (s *Storage) lseti(req *innerRequest) (interface{}, error) {
 	if req.m.t == TYPE_NULL {
 		return nil, &ObjectNotFound{req}
@@ -207,7 +209,7 @@ func (s *Storage) lseti(req *innerRequest) (interface{}, error) {
 	if !ok {
 		return nil, &BadRequest{req, "Incoming object is not string"}
 	}
-	listPtr, _ := s.buckets[req.b].Get(k)
+	listPtr, _ := s.buckets[req.b].get(k)
 	list, _ := (*listPtr).([]string)
 	if idx >= len(list) {
 		return nil, &BadRequest{req, "List index out of range"}
@@ -224,7 +226,7 @@ func (s *Storage) lget(req *innerRequest) (interface{}, error) {
 	} else if m.t != TYPE_LIST {
 		return nil, &BadRequest{req, "Stored object is not list"}
 	}
-	v, _ := s.buckets[req.b].Get(k)
+	v, _ := s.buckets[req.b].get(k)
 	return *v, nil
 }
 func (s *Storage) lgeti(req *innerRequest) (interface{}, error) {
@@ -242,7 +244,7 @@ func (s *Storage) lgeti(req *innerRequest) (interface{}, error) {
 		return nil, &BadRequest{req, "Non integer index: "+err.Error()}
 	}
 
-	listPtr, _ := s.buckets[req.b].Get(k)
+	listPtr, _ := s.buckets[req.b].get(k)
 	list, _ := (*listPtr).([]string)
 	if idx >= len(list) {
 		return nil, &BadRequest{req, "List index out of range"}
@@ -261,7 +263,7 @@ func (s *Storage) dset(req *innerRequest) (interface{}, error) {
 	s.keyExpirationMon.monitor(req.m, ttl)
 	req.m.t = TYPE_DICT
 	s.setKeyMeta(k, req.m)
-	s.buckets[req.b].Set(k, v)
+	s.buckets[req.b].set(k, v)
 	return nil, nil
 }
 func (s *Storage) dseti(req *innerRequest) (interface{}, error) {
@@ -271,11 +273,11 @@ func (s *Storage) dseti(req *innerRequest) (interface{}, error) {
 		return nil, &BadRequest{req, "Incoming object is not string"}
 	}
 	idx := req.idx
-	dictPtr, ok := s.buckets[req.b].Get(k)
+	dictPtr, ok := s.buckets[req.b].get(k)
 	if !ok {
 		req.m.t = TYPE_DICT
 		s.setKeyMeta(k, req.m)
-		s.buckets[req.b].Set(k, map[string]string{idx:v})
+		s.buckets[req.b].set(k, map[string]string{idx:v})
 	} else {
 		dict := (*dictPtr).(map[string]string)
 		dict[idx] = v
@@ -291,7 +293,7 @@ func (s *Storage) dget(req *innerRequest) (interface{}, error) {
 	} else if m.t != TYPE_DICT {
 		return nil, &BadRequest{req, "Stored object is not dict"}
 	}
-	v, _ := s.buckets[req.b].Get(k)
+	v, _ := s.buckets[req.b].get(k)
 	return *v, nil
 }
 func (s *Storage) dgeti(req *innerRequest) (interface{}, error) {
@@ -305,7 +307,7 @@ func (s *Storage) dgeti(req *innerRequest) (interface{}, error) {
 	}
 
 	idx := req.idx
-	dictPtr, _ := s.buckets[req.b].Get(k)
+	dictPtr, _ := s.buckets[req.b].get(k)
 	dict := (*dictPtr).(map[string]string)
 	val, ok := dict[idx]
 	if !ok {
@@ -322,7 +324,7 @@ func (s *Storage) dkeys(req *innerRequest) (interface{}, error) {
 	} else if m.t != TYPE_DICT {
 		return nil, &BadRequest{req, "Stored object is not dict"}
 	}
-	dictPtr, _ := s.buckets[req.b].Get(k)
+	dictPtr, _ := s.buckets[req.b].get(k)
 	dict := (*dictPtr).(map[string]string)
 	keys := make([]string, len(dict))
 	i := 0

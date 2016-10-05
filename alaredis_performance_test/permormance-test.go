@@ -115,7 +115,7 @@ func main() {
 
 	rand.Seed(time.Now().UnixNano())
 
-	client := alaredis_lib.NewClient(host, port, bodyParser)
+	client := alaredis_lib.NewClient(host, port)
 
 	if genCases {
 		letters := "abcd"
