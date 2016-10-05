@@ -120,6 +120,7 @@ func main() {
 	if genCases {
 		letters := "abcd"
 		generateCases(client, num, &letters, 4, 0, casesFile)
+		log.Printf("Saved %d queries to %s", num, casesFile)
 	}
 	if runCases {
 		log.Printf("Going to run queries from file %s to alaredis server %s", casesFile, client.GetBaseUrl())
