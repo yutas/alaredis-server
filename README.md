@@ -88,7 +88,7 @@ Where
 ### Operations
 
 | Operation        | Action           | Comments  |
-| ------------- |:-------------:| -----:|
+| ------------- |:-------------| -----|
 | delete    | remove cached object |  |
 | set | set string object | if there is some object of any time, it will be rewritten |
 | get | get string object | if object is not string, error will be returned | 
