@@ -5,7 +5,7 @@ Simple in-memory cache server according to https://github.com/gojuno/test_tasks
 * **alaredis_server** provides executable for cache server
 * **alaredis_performance_test** - executable for simple performance test, running several query types
 
-## Instalation
+## Installation
 ```bash
 go get github.com/yutas/alaredis-server/alaredis_server
 go get github.com/yutas/alaredis-server/alaredis_performance_test
