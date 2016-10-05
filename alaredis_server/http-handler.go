@@ -78,6 +78,7 @@ func (h *HttpHandler) HandleRequest(w http.ResponseWriter, r *http.Request) {
 		} else {
 			buf, err := h.bodyParser.ComposeBody(val)
 			if err == nil {
+				w.Header().Set("Content-Type", h.bodyParser.GetContentType())
 				w.Write(buf.Bytes())
 			} else {
 				http.Error(w, err.Error(), http.StatusInternalServerError)

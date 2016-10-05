@@ -37,3 +37,7 @@ func (p BodyParserJson) GetDictValue(r io.Reader) (map[string]string, error) {
 	err := p.ParseBody(r, &v)
 	return v, err
 }
+
+func (p BodyParserJson) GetContentType() string {
+	return `application/json`
+}

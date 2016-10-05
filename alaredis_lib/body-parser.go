@@ -11,4 +11,5 @@ type BodyParser interface {
 	GetStringValue(body io.Reader) (string, error)
 	GetListValue(body io.Reader) ([]string, error)
 	GetDictValue(body io.Reader) (map[string]string, error)
+	GetContentType() string
 }

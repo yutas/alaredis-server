@@ -62,3 +62,7 @@ func (p BodyParserBinary) GetDictValue(body io.Reader) (map[string]string, error
 	}
 	return m, nil
 }
+
+func (p BodyParserBinary) GetContentType() string {
+	return `application/octet-stream`
+}
