@@ -1,7 +1,5 @@
 package main
 
-import "sync"
-
 type StorageBucket struct {
 	data   map[string]interface{}
 	requestChan chan *innerRequest
