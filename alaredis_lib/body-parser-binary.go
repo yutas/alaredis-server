@@ -3,50 +3,76 @@ package alaredis_lib
 import (
 	"io"
 	"errors"
+	"encoding/binary"
+	"bytes"
 )
 
 type BodyParserBinary struct {
 
 }
 
-func (p BodyParserBinary) ComposeBody(w io.Writer, val interface{}) error {
-	return nil
+func (p BodyParserBinary) ComposeBody(val interface{}) (*bytes.Buffer, error) {
+	buf := bytes.NewBuffer(make([]byte, 0))
+	switch val.(type) {
+	case string:
+		s := val.(string)
+		binary.Write(buf, binary.LittleEndian, int32(len(s)))
+		buf.Write([]byte(s))
+	case []string:
+		s := val.([]string)
+		for i := range s {
+			binary.Write(buf, binary.LittleEndian, int32(len(s[i])))
+			buf.Write([]byte(s[i]))
+		}
+	case map[string]string:
+		s := val.(map[string]string)
+		for i, v := range s {
+			binary.Write(buf, binary.LittleEndian, int32(len(i)))
+			buf.Write([]byte(i))
+			binary.Write(buf, binary.LittleEndian, int32(len(v)))
+			buf.Write([]byte(v))
+		}
+	}
+	return buf, nil
 }
 
-func (h BodyParserBinary) ParseBody(body io.Reader, data *[]string) (error) {
-	var size int
-	sbuf := make([]byte, 4)
-	var vbuf []byte
+func (h BodyParserBinary) parseBody(body io.Reader, data *[]string, limit int) (error) {
+	var size int32
+	valsCnt := 0
 	for {
-		n,err := io.ReadAtLeast(body, sbuf, len(sbuf))
-		size = int(sbuf[0]) << 24 | int(sbuf[1]) << 16 | int(sbuf[2]) << 8 | int(sbuf[3])
+		sizeBuf := make([]byte, 4)
+		n, err := io.ReadAtLeast(body, sizeBuf, 4)
+		if err == io.EOF { break }
+		binary.Read(bytes.NewReader(sizeBuf), binary.LittleEndian, &size)
 
-		n, err = io.ReadAtLeast(body, vbuf, size)
+		valBuf := make([]byte, size)
+		n, err = io.ReadAtLeast(body, valBuf, int(size))
 		if n > 0 {
-			*data = append(*data, string(vbuf))
+			*data = append(*data, string(valBuf))
 		}
-		if err == io.EOF {
-			break
-		}
+		if err == io.EOF { break }
+
+		valsCnt++
+		if limit > 0 && valsCnt >= limit { break }
 	}
 	return nil
 }
 
 func (p BodyParserBinary) GetStringValue(body io.Reader) (string, error) {
 	var data []string
-	err := p.ParseBody(body, &data)
+	err := p.parseBody(body, &data, 1)
 	return data[0], err
 }
 
 func (p BodyParserBinary) GetListValue(body io.Reader) ([]string, error) {
 	var data []string
-	err := p.ParseBody(body, &data)
+	err := p.parseBody(body, &data, 0)
 	return data, err
 }
 
 func (p BodyParserBinary) GetDictValue(body io.Reader) (map[string]string, error) {
 	var data []string
-	err := p.ParseBody(body, &data)
+	err := p.parseBody(body, &data, 0)
 	if err != nil { return nil, err }
 	if len(data) % 2 == 1 {
 		return nil, errors.New("Key count is not equal to values count")

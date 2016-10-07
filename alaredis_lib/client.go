@@ -21,7 +21,7 @@ func NewClient(host string, port int) *CacheClient {
 	c := new(CacheClient)
 	c.baseUrl = fmt.Sprintf("http://%s:%d", host, port)
 	c.client = &http.Client{}
-	c.bodyParser = BodyParserJson{}
+	c.bodyParser = BodyParserBinary{}
 	return c
 }
 
