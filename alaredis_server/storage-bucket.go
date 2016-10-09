@@ -25,3 +25,7 @@ func (b *StorageBucket) get(k string) (*interface{}, bool) {
 	v, ok := b.data[k]
 	return &v, ok
 }
+
+func (b *StorageBucket) clear() {
+	b.data = make(map[string]interface{})
+}

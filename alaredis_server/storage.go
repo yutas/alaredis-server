@@ -31,12 +31,12 @@ const (
 
 
 type Storage struct {
-	bucketsNum       int
-	buckets          []*StorageBucket
-	meta             map[string]*keyMeta
-	metaLock         sync.RWMutex
-	requestChan      chan *innerRequest
-	keyExpirationMon *ttlMonitor
+	bucketsNum  int
+	buckets     []*StorageBucket
+	keyMetaMap  map[string]*keyMeta
+	metaLock    sync.RWMutex
+	requestChan chan *innerRequest
+	ttlMonitor  *ttlMonitor
 }
 
 type innerRequest struct {
@@ -58,10 +58,10 @@ func NewStorage(bucketsNum int) *Storage {
 	for i:=0; i<s.bucketsNum;i++ {
 		s.buckets[i] = newStorageBucket()
 	}
-	s.meta = make(map[string]*keyMeta)
+	s.keyMetaMap = make(map[string]*keyMeta)
 	s.requestChan = make(chan *innerRequest)
 	s.metaLock = sync.RWMutex{}
-	s.keyExpirationMon = newTTLMonitor(s.bucketsNum*2, s.onKeyExpire)
+	s.ttlMonitor = newTTLMonitor(s.bucketsNum*2, s.onKeyExpire)
 	return s
 }
 
@@ -100,13 +100,13 @@ func (s *Storage) run() {
 	opHandlers[OP_DKEYS] = s.dkeys
 
 	// starting workers, processing requests, one per bucket
-	for i:=0;i<s.bucketsNum;i++ {
-		b := i
-		log.Printf("Started worker for bucket #%d", b)
+	for i, b := range s.buckets {
+		bucket := b
+		log.Printf("Started worker for bucket #%d", i)
 		go func() {
 			for {
 				select {
-				case req := <-s.buckets[b].requestChan:
+				case req := <-bucket.requestChan:
 					val, err := opHandlers[req.op](req)
 					if err == nil {
 						req.outCh <- val
@@ -118,7 +118,7 @@ func (s *Storage) run() {
 		} ()
 	}
 
-	s.keyExpirationMon.run()
+	s.ttlMonitor.run()
 }
 
 func (s *Storage) processInnerRequest(req *innerRequest) {
@@ -131,22 +131,30 @@ func (s *Storage) onKeyExpire(m *keyMeta) {
 
 func (s *Storage) getKeyMeta(k string) (*keyMeta, bool) {
 	s.metaLock.RLock()
-	m, ok := s.meta[k]
+	m, ok := s.keyMetaMap[k]
 	s.metaLock.RUnlock()
 	return m, ok
 }
 
 func (s *Storage) setKeyMeta(k string, m *keyMeta) {
 	s.metaLock.Lock()
-	s.meta[k] = m
+	s.keyMetaMap[k] = m
 	s.metaLock.Unlock()
+}
+
+// clears all data
+func (s *Storage) clear() {
+	for i, b := range s.buckets {
+		log.Printf("Clearing bucket #%d", i)
+		b.clear()
+	}
 }
 
 func (s *Storage) delete(req *innerRequest) (interface{}, error) {
 	k := req.key
 
 	s.metaLock.Lock()
-	delete(s.meta, k)
+	delete(s.keyMetaMap, k)
 	s.metaLock.Unlock()
 	s.buckets[req.bucket].delete(k)
 	return nil, nil
@@ -159,7 +167,7 @@ func (s *Storage) set(req *innerRequest) (interface{}, error) {
 	if !ok {
 		return nil, &BadRequest{req, "Incoming object is not string"}
 	}
-	s.keyExpirationMon.monitor(req.meta, ttl)
+	s.ttlMonitor.monitor(req.meta, ttl)
 	req.meta.t = TYPE_STRING
 	s.setKeyMeta(k, req.meta)
 	s.buckets[req.bucket].set(k, v)
@@ -187,7 +195,7 @@ func (s *Storage) lset(req *innerRequest) (interface{}, error) {
 		return nil, &BadRequest{req, "Incoming object is not list"}
 	}
 
-	s.keyExpirationMon.monitor(req.meta, ttl)
+	s.ttlMonitor.monitor(req.meta, ttl)
 	req.meta.t = TYPE_LIST
 	s.setKeyMeta(k, req.meta)
 	s.buckets[req.bucket].set(k, v)
@@ -260,7 +268,7 @@ func (s *Storage) dset(req *innerRequest) (interface{}, error) {
 		return nil, &BadRequest{req, "Incoming object is not dict"}
 	}
 
-	s.keyExpirationMon.monitor(req.meta, ttl)
+	s.ttlMonitor.monitor(req.meta, ttl)
 	req.meta.t = TYPE_DICT
 	s.setKeyMeta(k, req.meta)
 	s.buckets[req.bucket].set(k, v)
@@ -336,6 +344,10 @@ func (s *Storage) dkeys(req *innerRequest) (interface{}, error) {
 }
 
 
+func (s *Storage) persist() {
+
+}
+
 
 
 /*
@@ -356,6 +368,10 @@ func newKeyMeta(k string) *keyMeta {
 	return m
 }
 
+
+/**
+ * Errors
+ */
 
 type BadRequest struct {
 	req *innerRequest
